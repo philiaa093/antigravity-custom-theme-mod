@@ -1,0 +1,2 @@
+# Optional for payload builds; required for image design.
+Pillow==12.3.0
