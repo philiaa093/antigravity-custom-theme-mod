@@ -1,13 +1,35 @@
 # Build & runtime outputs
 dist/
-daemon.log
-daemon.pid
-theme_config.json
-silent-start.vbs
+/daemon.log
+/daemon.pid
+/daemon.webport
+/theme_config.json
+/silent-start.vbs
+/themes/themes.local.json
+/themes/.themes-*.json
+/themes/user_media/
+/themes/assets/theme_*.webp
+/themes/assets/upload_*.png
+
+# Local credentials and milestone scratch files
+.env
+.env.*
+!.env.example
+vision.json
+DevToolsActivePort
+*.pem
+*.key
+*.p12
+*.pfx
+/temp_verify_m1.js
+/TEST_INFRA.md
+/TEST_READY.md
 
 # OS / Python / Node junk
 __pycache__/
 *.pyc
+.pytest_cache/
+.venv/
 node_modules/
 .DS_Store
 Thumbs.db

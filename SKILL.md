@@ -29,7 +29,8 @@ Creates and applies custom glassmorphic themes (wallpapers, cohesive palettes, c
    - When the user wants matching chat avatars (or provides character/themed artwork), also craft or crop square `userAvatar` & `agentAvatar` assets (PNG/WebP or bespoke SVG emblems) and custom `sticker`/`cornerSvg` flourishes.
 3. **Stage assets & edit `themes/themes.json`**
    - Save wallpaper under `themes/assets/<slug>.webp` (or `.png`), optional SVG stickers/corners, and optional `userAvatar` / `agentAvatar` files under `themes/assets/`.
-   - Add a new entry in `themes/themes.json` referencing `"assets/<filename>"` (keep existing sample presets unless asked to remove them).
+    - Add a new entry in `themes/themes.json` referencing `"assets/<filename>"` (keep existing sample presets unless asked to remove them).
+    - For private artwork, use an ignored `themes/themes.local.json` copy instead of modifying the shared catalog. Keep private assets out of Git; see `ARCHITECTURE.md`.
    - Never hardcode personal OS paths (`C:\Users\...`, `/Users/...`, `/home/...`) in JSON, JS, or scripts.
 4. **Compile & syntax-check payload**
    - Run `python scripts/build_payload.py` (or `python3 scripts/build_payload.py`).

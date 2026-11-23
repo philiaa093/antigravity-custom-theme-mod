@@ -19,8 +19,14 @@
 | `clearBackdrop` | boolean | Yes | Removes heavy default opaque panels so wallpaper / pureBg breathes |
 | `overlayRgb` | `"R, G, B"` | Yes | Base RGB triplet for wallpaper tint/scrim and unified glass overlay |
 | `bgPosition` | css background-position | Optional | Focal point alignment (`"center center"`, `"center 20%"`, etc.) |
+| `bubbleStyle` | string | Optional | Import preview label (`glass`, `ink`, or `ribbon`); `bg` and `frameBg` set the actual rendering |
+| `bubbleRadius` | number | Optional | User bubble outer corner radius in pixels |
+| `inputStyle` | string | Optional | Composer mode applied when the preset is selected (`glass`, `minimal`, `sync`, or `double_gold`) |
+| `inputRadius` | number | Optional | Composer outer corner radius in pixels for the preset's selected `inputStyle` |
+| `inputFrameBg`, `inputShellBg` | CSS background, CSS color | Optional | Separate composer border and shell tint, independent of the bubble frame |
 | `pureBg` | css background | Optional | Pure-CSS multi-layer gradient used when `wallpaper` is `""` |
 | `wallpaper` | string | Yes | Relative asset path (`"assets/foo.webp"`), `data:` URI, or `""` for CSS-only |
+| `wallpaperVideo` | string | Optional | Local video in `themes/assets/` (`mp4`, `webm`, `mov`, or `m4v`). Use `wallpaper` for its poster. |
 | `sidebarBg` | rgba string | Yes | Left navigation rail tint |
 | `sidebarBlur` | string | Optional | Passed only to offscreen pre-baked texture sampler (`syncPrebakedGlass`) — never applied as live CSS `backdrop-filter` |
 | `sidebarHoverBg` | rgba string | Yes | Hover highlight on sidebar conversation rows |
@@ -32,7 +38,7 @@
 | `headerBorder` | rgba string | Yes | Bottom hairline border of the top bar |
 | `unifiedGlass` | boolean | Yes | Enables seamless unified L-glass spanning sidebar + top header |
 | `btnBg` | rgba string | Yes | Composer pill/button dark surface (`rgba(15, 30, 58, 0.56)` etc.) |
-| `inputGlassBg` | rgba string | Yes | Composer glass backdrop |
+| `inputGlassBg` | CSS color | Yes | Composer glass backdrop |
 | `inputCardBg` | css background | Yes | Composer container gradient |
 | `modalBg` | rgba string | Yes | Settings modal surface (`rgba(..., 0.96)` keeps text razor sharp) |
 | `modalHeaderBg` | rgba string | Yes | Settings modal header gradient/color |
@@ -48,6 +54,8 @@
 | `isLight` | boolean | Optional | Enables Light Mode Glass typography (`#0f172a` ink, frosted light pills, dark window controls) |
 | `uiTextColor`, `uiMutedColor` | css color | Optional | Override header/sidebar/body primary and muted ink (defaults adapt to `isLight`) |
 | `pillBg`, `pillHoverBg`, `pillTextColor`, `pillBorder` | css color | Optional | Custom styling for composer strip pills (`No Project`, `Local Checkout`, branch trigger) |
+| `fontFamily` | string | Optional | Primary UI & chat font family override stack (e.g. `"Inter, sans-serif"` or `"Geist, sans-serif"`) |
+| `codeFontFamily` | string | Optional | Code block & monospace font family override stack (e.g. `"'JetBrains Mono', monospace"` or `"'Fira Code', monospace"`) |
 
 ## Asset Resolution (`scripts/build_payload.py`)
 
@@ -56,6 +64,14 @@ When compiling `dist/theme_payload.js`:
 - `.svg` files become URL-encoded `data:image/svg+xml,...`.
 - Raster images (`.png`, `.jpg`, `.jpeg`, `.webp`) are resized down to max `2560px` (`256px` for `userAvatar`/`agentAvatar`) and converted to WebP (`quality=88`) when Pillow is installed, keeping payload size ~200–600 KB.
 - Leave `wallpaper` as `""` and supply `pureBg` for zero-image gradient presets (e.g. `Midnight Obsidian`).
+- `wallpaperVideo` remains a relative path and is streamed by the loopback daemon, not embedded in `dist/theme_payload.js`.
+
+## Studio Preferences (`theme_config.json`)
+
+- `wallpaperMode`: `preset` (default), `image`, or `video`. `imageMedia` and `videoMedia` are independent local library IDs, not URLs. Older `customWp` image overrides still work.
+- `bootIntro`, `sketchReveal`, `taskVoiceEnabled`: opt-in booleans, default `false`.
+- `customGreetings`: up to 12 lines of plain text, up to 120 characters each. An empty list leaves the app greeting unchanged.
+- `taskVoiceVolume`: `0` to `100`, default `80`. Completion sounds are picked from audio files in the local library.
 
 ## Antigravity UI Targets Handled by `engine/core.js`
 

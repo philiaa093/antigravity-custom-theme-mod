@@ -9,8 +9,11 @@
 
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const os = require('os');
 const path = require('path');
+const { execFileSync } = require('child_process');
+const { createHash } = require('crypto');
 
 if (typeof globalThis.WebSocket !== 'function') {
     console.error('[theme-daemon] Node.js >= 22 with built-in WebSocket is required.');
@@ -19,11 +22,15 @@ if (typeof globalThis.WebSocket !== 'function') {
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const PID_FILE = path.join(ROOT_DIR, 'daemon.pid');
+const WEBPORT_FILE = path.join(ROOT_DIR, 'daemon.webport');
 const CONFIG_FILE = process.env.AGY_CONFIG_PATH || path.join(ROOT_DIR, 'theme_config.json');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const PAYLOAD_PATH = path.join(DIST_DIR, 'theme_payload.js');
 const LOG_FILE = path.join(ROOT_DIR, 'daemon.log');
 const DEFAULT_CONFIG = {};
+
+const { startWebServer, resolveThemesFile, readPresets, validateAndClampConfig, atomicWriteJsonSync } = require('./web_server');
+const THEMES_PATH = resolveThemesFile(ROOT_DIR);
 
 function resolvePortFile() {
     if (process.env.AGY_PORT_FILE) {
@@ -88,6 +95,16 @@ function acquirePidLock() {
     fs.writeFileSync(PID_FILE, String(process.pid), 'utf8');
 }
 
+function ensurePayload() {
+    const builder = path.join(ROOT_DIR, 'scripts', 'build_payload.py');
+    const sources = [builder, path.join(ROOT_DIR, 'engine', 'core.js'), THEMES_PATH];
+    const artifact = fs.statSync(PAYLOAD_PATH, { throwIfNoEntry: false });
+    if (artifact?.size && sources.every(file => (fs.statSync(file, { throwIfNoEntry: false })?.mtimeMs ?? 0) <= artifact.mtimeMs)) return;
+    const python = process.env.PYTHON_PATH || process.env.PYTHON || process.env.PYTHON_CMD || (process.platform === 'win32' ? 'python' : 'python3');
+    execFileSync(python, [builder, '--themes', THEMES_PATH], { cwd: ROOT_DIR, windowsHide: true, timeout: 60000 });
+    log('Rebuilt missing or stale dist/theme_payload.js.');
+}
+
 function removePidLock() {
     try {
         if (fs.existsSync(PID_FILE)) {
@@ -95,6 +112,14 @@ function removePidLock() {
             if (pid === process.pid) {
                 fs.unlinkSync(PID_FILE);
             }
+        }
+    } catch (_) {}
+}
+
+function removeWebportLock() {
+    try {
+        if (fs.existsSync(WEBPORT_FILE)) {
+            fs.unlinkSync(WEBPORT_FILE);
         }
     } catch (_) {}
 }
@@ -115,9 +140,12 @@ function readConfig() {
 
 function saveConfig(next) {
     try {
-        const merged = { ...readConfig(), ...next };
-        fs.writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2), 'utf8');
-        return merged;
+        if (!next || typeof next !== 'object' || Array.isArray(next)) return null;
+        const presets = readPresets(THEMES_PATH);
+        const { sanitized, errors } = validateAndClampConfig(next, presets);
+        if (errors.length) throw new Error(errors.join('; '));
+        atomicWriteJsonSync(CONFIG_FILE, { ...readConfig(), ...sanitized });
+        return sanitized;
     } catch (err) {
         log(`Failed saving theme_config.json: ${err.message}`);
         return null;
@@ -125,7 +153,18 @@ function saveConfig(next) {
 }
 
 let missingPayloadLogged = false;
-function buildInjectedSource() {
+let webServerInstance = null;
+
+function isThemePage(url) {
+    try {
+        const page = new URL(url);
+        return (['https:', 'http:'].includes(page.protocol) && ['127.0.0.1', 'localhost', '[::1]'].includes(page.hostname) &&
+            !(page.protocol === 'http:' && Number(page.port) === webServerInstance?.port)) ||
+            (page.protocol === 'vscode-file:' && page.hostname === 'vscode-app' && /\/(?:workbench|launchpad)\.html$/.test(page.pathname));
+    } catch (_) { return false; }
+}
+
+function buildInjectedSource(page) {
     if (!fs.existsSync(PAYLOAD_PATH)) {
         if (!missingPayloadLogged) {
             log(`Payload not built yet (${PAYLOAD_PATH}). Run: python scripts/build_payload.py`);
@@ -137,7 +176,15 @@ function buildInjectedSource() {
 
     const cfgJson = JSON.stringify(readConfig());
     const payloadCode = fs.readFileSync(PAYLOAD_PATH, 'utf8');
-    return `window.__AGY_INITIAL_CONFIG__ = ${cfgJson};\n${payloadCode}`;
+    const expected = new URL(page.url);
+    const guard = `window === window.top && location.protocol === ${JSON.stringify(expected.protocol)} && location.host === ${JSON.stringify(expected.host)}`;
+    return `(() => {
+        if (!(${guard}) || !document.body || !document.head) return '';
+        window.__AGY_INITIAL_CONFIG__ = ${cfgJson};
+        window.__AGY_MEDIA_ACCESS__ = ${JSON.stringify(webServerInstance?.mediaAccess || null)};
+        ${payloadCode}
+        return document.getElementById('agy-studio-style') ? localStorage.getItem('agy_theme_v3') : '';
+    })()`;
 }
 
 function getPortInfo() {
@@ -192,17 +239,38 @@ function createSession(target) {
                 return;
             }
             const id = nextId++;
-            pending.set(id, { resolve, reject });
+            const timer = setTimeout(() => {
+                pending.delete(id);
+                reject(new Error(`CDP timeout: ${method}`));
+            }, 8000);
+            pending.set(id, { resolve, reject, timer });
             ws.send(JSON.stringify({ id, method, params }));
         });
     }
 
+    session.send = send;
+    async function evaluate(expression) {
+        const result = await send('Runtime.evaluate', { expression, returnByValue: true });
+        if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description?.split('\n')[0] || result.exceptionDetails.text);
+        return result.result?.value;
+    }
+
+    session.applyTheme = async (config) => {
+        const expr = `window.__ANTIGRAVITY_APPLY_CUSTOM_THEME__?.(${JSON.stringify(config)}, false)`;
+        const applied = await evaluate(expr);
+        if (!applied || (config.themeName && applied !== config.themeName)) throw new Error('Renderer did not apply the requested theme');
+        session.appliedTheme = applied;
+    };
+
     session.reinject = async () => {
-        const src = buildInjectedSource();
-        if (!src) return;
         try {
-            await send('Runtime.evaluate', { expression: src, awaitPromise: false });
-        } catch (_) {}
+            const src = buildInjectedSource(session.target);
+            session.appliedTheme = src ? await evaluate(src) : '';
+        } catch (err) {
+            session.appliedTheme = '';
+            log(`Reinject error for ${session.id}: ${err.message}`);
+        }
+        return session.appliedTheme;
     };
 
     ws.addEventListener('message', async (event) => {
@@ -216,6 +284,7 @@ function createSession(target) {
         if (msg.id && pending.has(msg.id)) {
             const p = pending.get(msg.id);
             pending.delete(msg.id);
+            clearTimeout(p.timer);
             if (msg.error) p.reject(new Error(msg.error.message || 'CDP error'));
             else p.resolve(msg.result);
             return;
@@ -224,10 +293,12 @@ function createSession(target) {
         if (msg.method === 'Runtime.bindingCalled' && msg.params && msg.params.name === 'agySaveThemeConfig') {
             try {
                 const payload = JSON.parse(msg.params.payload || '{}');
-                saveConfig(payload);
+                const changes = saveConfig(payload);
+                if (!changes) return;
+                if (changes.themeName && session.appliedTheme) session.appliedTheme = changes.themeName;
                 for (const other of sessions.values()) {
                     if (other.id !== target.id) {
-                        other.reinject();
+                        other.applyTheme(changes).catch(() => other.reinject());
                     }
                 }
             } catch (err) {
@@ -236,7 +307,7 @@ function createSession(target) {
             return;
         }
 
-        if (msg.method === 'Page.frameNavigated' && msg.params && msg.params.frame && !msg.params.frame.parentId) {
+        if (msg.method === 'Page.domContentEventFired') {
             await session.reinject();
         }
     });
@@ -249,12 +320,8 @@ function createSession(target) {
                 await send('Runtime.addBinding', { name: 'agySaveThemeConfig' });
             } catch (_) {}
 
-            const src = buildInjectedSource();
-            if (src) {
-                await send('Page.addScriptToEvaluateOnNewDocument', { source: src });
-                await send('Runtime.evaluate', { expression: src, awaitPromise: false });
-            }
-            log(`Attached target ${target.id} (${target.url})`);
+            await session.reinject();
+            log(`Attached target ${target.id}`);
         } catch (err) {
             log(`Attach error for ${target.id}: ${err.message}`);
         }
@@ -262,10 +329,11 @@ function createSession(target) {
 
     const cleanup = () => {
         for (const p of pending.values()) {
+            clearTimeout(p.timer);
             p.reject(new Error('WebSocket closed'));
         }
         pending.clear();
-        sessions.delete(target.id);
+        if (sessions.get(target.id) === session) sessions.delete(target.id);
     };
     ws.addEventListener('close', cleanup);
     ws.addEventListener('error', cleanup);
@@ -293,12 +361,7 @@ async function scanPages() {
     }
     if (!Array.isArray(targets)) return;
 
-    const pages = targets.filter((t) => {
-        if (!t || t.type !== 'page' || !t.webSocketDebuggerUrl) return false;
-        const url = String(t.url || '');
-        if (url.startsWith('devtools://') || url.startsWith('chrome-extension://')) return false;
-        return url.includes('127.0.0.1') || url.includes('workbench') || url.includes('launchpad');
-    });
+    const pages = targets.filter(t => t?.type === 'page' && t.webSocketDebuggerUrl && isThemePage(t.url));
 
     const liveIds = new Set(pages.map((p) => p.id));
     for (const [id, session] of sessions.entries()) {
@@ -311,9 +374,12 @@ async function scanPages() {
     }
 
     for (const page of pages) {
-        if (!sessions.has(page.id)) {
-            createSession(page);
-        }
+        const session = sessions.get(page.id);
+        if (!session) { createSession(page); continue; }
+        const previous = new URL(session.target.url);
+        const current = new URL(page.url);
+        session.target = page;
+        if (previous.protocol !== current.protocol || previous.host !== current.host) session.reinject();
     }
 }
 
@@ -337,8 +403,40 @@ function watchPayload() {
     }
 }
 
+const cdpController = {
+    getSessionCount() {
+        return Array.from(sessions.values()).filter(s => s.appliedTheme).length;
+    },
+    getAppliedTheme() {
+        return Array.from(sessions.values()).find(s => s.appliedTheme)?.appliedTheme || '';
+    },
+    async broadcastTheme(config) {
+        const list = Array.from(sessions.values());
+        const confirmed = await Promise.all(list.map(async s => {
+            try {
+                await s.applyTheme(config);
+                return true;
+            } catch (err) {
+                log(`Broadcast error for ${s.id}: ${err.message}`);
+                const applied = await s.reinject();
+                return Boolean(applied && (!config.themeName || applied === config.themeName));
+            }
+        }));
+        return confirmed.filter(Boolean).length;
+    },
+    async reinjectAll() {
+        const list = Array.from(sessions.values());
+        await Promise.all(list.map((s) => s.reinject().catch((err) => {
+            log(`Reinject error for ${s.id}: ${err.message}`);
+        })));
+    }
+};
+
 function shutdown(signal) {
     log(`Shutting down on ${signal}.`);
+    if (webServerInstance) {
+        try { webServerInstance.close(); } catch (_) {}
+    }
     for (const s of sessions.values()) {
         try {
             s.ws.close();
@@ -346,15 +444,38 @@ function shutdown(signal) {
     }
     sessions.clear();
     removePidLock();
+    removeWebportLock();
     process.exit(0);
 }
 
-acquirePidLock();
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('exit', removePidLock);
+async function startDaemon() {
+    acquirePidLock();
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('exit', () => {
+        removePidLock();
+        removeWebportLock();
+    });
+    try {
+        ensurePayload();
+        webServerInstance = await startWebServer({ rootDir: ROOT_DIR, themesFilePath: THEMES_PATH, cdp: cdpController, log });
+    } catch (err) {
+        log(`Daemon startup failed: ${err.message}`);
+        process.exit(1);
+    }
+    log(`Theme daemon started (PID ${process.pid}, platform=${process.platform}, portFile=${resolvePortFile()}).`);
+    watchPayload();
+    scanPages();
+    setInterval(scanPages, 1500);
+}
 
-log(`Theme daemon started (PID ${process.pid}, platform=${process.platform}, portFile=${resolvePortFile()}).`);
-watchPayload();
-scanPages();
-setInterval(scanPages, 1500);
+if (process.platform === 'win32') {
+    // Tray launchers use daemon.pid as a status file; the pipe stays locked even if that file is removed.
+    const key = createHash('sha256').update(fs.realpathSync(ROOT_DIR).toLowerCase()).digest('hex').slice(0, 24);
+    const lock = net.createServer(socket => socket.end());
+    lock.on('error', err => {
+        log(err.code === 'EADDRINUSE' ? 'Another theme daemon owns this workspace.' : `Daemon lock failed: ${err.message}`);
+        process.exit(err.code === 'EADDRINUSE' ? 0 : 1);
+    });
+    lock.listen(`\\\\.\\pipe\\antigravity-theme-${key}`, startDaemon);
+} else void startDaemon();

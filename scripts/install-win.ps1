@@ -89,16 +89,10 @@ foreach ($SearchDir in $ShortcutSearchDirs) {
 }
 
 if (-not $NoStartup) {
-    $StartupDir = [Environment]::GetFolderPath('Startup')
-    $ShortcutPath = Join-Path $StartupDir 'AntigravityCustomTheme.lnk'
-    $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
-    $Shortcut.TargetPath = 'wscript.exe'
-    $Shortcut.Arguments = """$VbsPath"""
-    $Shortcut.WorkingDirectory = $RepoRoot
-    $Shortcut.WindowStyle = 7
-    $Shortcut.Description = 'Antigravity Custom Theme Daemon'
-    $Shortcut.Save()
-    Write-Host "[install-win] Startup shortcut created: $ShortcutPath"
+    $AutostartScript = Join-Path $ScriptDir 'setup-autostart.ps1'
+    if (Test-Path $AutostartScript) {
+        & $AutostartScript
+    }
 }
 
 Write-Host "[install-win] Launching daemon via wscript.exe..."

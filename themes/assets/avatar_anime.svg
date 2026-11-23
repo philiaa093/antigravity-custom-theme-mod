@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <clipPath id="animeAvatarClip">
+      <circle cx="50" cy="50" r="49"/>
+    </clipPath>
+    <linearGradient id="animeAvatarBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="50%" stop-color="#312e81"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="animeHairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4338ca"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="animeEyeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#bae6fd"/>
+    </linearGradient>
+    <linearGradient id="animeRimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="50%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#f472b6"/>
+    </linearGradient>
+  </defs>
+
+  <g clip-path="url(#animeAvatarClip)">
+    <!-- Cosmic Background -->
+    <rect width="100" height="100" fill="url(#animeAvatarBg)"/>
+    
+    <!-- Background Glimmers & Starlight -->
+    <circle cx="16" cy="22" r="1.5" fill="#fef08a" opacity="0.85"/>
+    <circle cx="84" cy="24" r="1.8" fill="#38bdf8" opacity="0.85"/>
+    <path d="M 82 21 L 83 23 L 85 24 L 83 25 L 82 27 L 81 25 L 79 24 L 81 23 Z" fill="#ffffff" opacity="0.75"/>
+    <circle cx="88" cy="74" r="1.2" fill="#fbbf24" opacity="0.7"/>
+    <circle cx="14" cy="65" r="1.0" fill="#38bdf8" opacity="0.7"/>
+
+    <!-- Flowing Back Hair Silhouette -->
+    <path d="M 22 45 C 18 64 22 84 27 96 L 35 86 C 30 72 27 58 29 45 Z" fill="#1e1b4b"/>
+    <path d="M 78 45 C 82 64 78 84 73 96 L 65 86 C 70 72 73 58 71 45 Z" fill="#1e1b4b"/>
+
+    <!-- High-Collar Cyber Outfit -->
+    <path d="M 20 100 L 32 82 L 44 82 L 50 87 L 56 82 L 68 82 L 80 100 Z" fill="#0f172a"/>
+    <path d="M 32 82 L 44 82 L 50 87 L 56 82 L 68 82" stroke="#38bdf8" stroke-width="1.6" fill="none"/>
+    <polygon points="44,82 50,87 56,82 56,100 44,100" fill="#fbbf24" opacity="0.85"/>
+
+    <!-- Slender Neck & Shadow -->
+    <path d="M 44 70 L 44 83 L 56 83 L 56 70 Z" fill="#fed7aa"/>
+    <path d="M 44 70 L 56 70 L 53 76 L 47 76 Z" fill="#fbcfe8" opacity="0.55"/>
+
+    <!-- Face & Porcelain Skin -->
+    <path d="M 28 46 C 28 60 38 71 50 74 C 62 71 72 60 72 46 C 72 32 62 24 50 24 C 38 24 28 32 28 46 Z" fill="#fff1ee"/>
+
+    <!-- Soft Cheek Blush -->
+    <ellipse cx="36" cy="56" rx="4.5" ry="2.2" fill="#fda4af" opacity="0.55"/>
+    <ellipse cx="64" cy="56" rx="4.5" ry="2.2" fill="#fda4af" opacity="0.55"/>
+
+    <!-- Nose & Mouth -->
+    <path d="M 49.5 58 L 50 61 L 51.5 61" stroke="#f472b6" stroke-width="1" stroke-linecap="round" fill="none" opacity="0.75"/>
+    <path d="M 46.5 65.5 Q 50 68 53.5 65.5" stroke="#e11d48" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+    <ellipse cx="50" cy="67.5" rx="1.5" ry="0.6" fill="#fb7185" opacity="0.5"/>
+
+    <!-- Left Eye -->
+    <path d="M 32 50 C 33 46 41 46 43 50 C 42 54 34 54 32 50 Z" fill="#ffffff"/>
+    <ellipse cx="38" cy="50.5" rx="4.2" ry="4.8" fill="url(#animeEyeGrad)"/>
+    <ellipse cx="38" cy="50" rx="2" ry="2.5" fill="#0f172a"/>
+    <circle cx="36.5" cy="48.5" r="1.4" fill="#ffffff"/>
+    <circle cx="39.5" cy="52" r="0.8" fill="#ffffff"/>
+    <path d="M 31 49 C 33 44 42 44 44.5 48.5" stroke="#1e1b4b" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M 43 47.5 L 45.5 46" stroke="#1e1b4b" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M 31.5 42 Q 37 39 42.5 41" stroke="#4338ca" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+
+    <!-- Right Eye -->
+    <path d="M 68 50 C 67 46 59 46 57 50 C 58 54 66 54 68 50 Z" fill="#ffffff"/>
+    <ellipse cx="62" cy="50.5" rx="4.2" ry="4.8" fill="url(#animeEyeGrad)"/>
+    <ellipse cx="62" cy="50" rx="2" ry="2.5" fill="#0f172a"/>
+    <circle cx="60.5" cy="48.5" r="1.4" fill="#ffffff"/>
+    <circle cx="63.5" cy="52" r="0.8" fill="#ffffff"/>
+    <path d="M 69 49 C 67 44 58 44 55.5 48.5" stroke="#1e1b4b" stroke-width="2" stroke-linecap="round" fill="none"/>
+    <path d="M 57 47.5 L 54.5 46" stroke="#1e1b4b" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M 68.5 42 Q 63 39 57.5 41" stroke="#4338ca" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+
+    <!-- Layered Front Bangs & Crown Hair -->
+    <path d="M 24 44 C 24 24 35 15 50 15 C 65 15 76 24 76 44 C 76 49 74 58 72 65 C 70 60 70 48 68 44 C 65 52 61 55 58 51 C 55 45 54 36 53 36 C 51 39 49 50 46 52 C 43 54 41 45 38 43 C 36 48 34 60 31 65 C 28 58 24 49 24 44 Z" fill="url(#animeHairGrad)"/>
+    
+    <!-- Hair Glossy Highlight Ring -->
+    <path d="M 28 32 C 34 26 66 26 72 32" stroke="#c7d2fe" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="3 4 8 4 12 4" fill="none" opacity="0.8"/>
+
+    <!-- Cosmic Star Hairpin Ornament -->
+    <path d="M 26 29 L 27.5 33 L 31.5 34.5 L 27.5 36 L 26 40 L 24.5 36 L 20.5 34.5 L 24.5 33 Z" fill="#fbbf24"/>
+    <circle cx="26" cy="34.5" r="1.3" fill="#ffffff"/>
+  </g>
+
+  <!-- Concentric Outer Circular Rim -->
+  <circle cx="50" cy="50" r="48.5" fill="none" stroke="url(#animeRimGrad)" stroke-width="1.8" opacity="0.9"/>
+</svg>
