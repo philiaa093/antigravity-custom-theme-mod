@@ -2,6 +2,42 @@
 
 > Historical design notes. Use [README](../README.md) for supported commands and [Architecture](../ARCHITECTURE.md) for current paths and boundaries. The current Dashboard is a single `web/index.html`; the endpoint examples and implementation claims in these notes are not the production API contract.
 
+> **Current update:** For a theme that disappears after an Antigravity update, use the recovery procedure in §0 below. The recovery path restores the existing external CDP integration; it does not patch Antigravity binaries, run an installer, rewrite shortcuts, or manage a separate model patcher's backups.
+
+## 0. Current Update — Recover the Theme After Antigravity Updates
+
+Antigravity v2.33.0+ may start without creating `DevToolsActivePort`, and an updater restart may reuse the application without the debug flags that the theme daemon needs. The supported Windows recovery command is:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-theme.ps1
+```
+
+The command:
+
+1. Locates the per-user `Antigravity.exe` installation.
+2. Refuses to run while the Antigravity updater installer is active.
+3. Ignores renderer, utility, and `sidecar_sdk` processes when deciding whether the main app is running.
+4. Starts a closed main app with loopback-only debugging (`127.0.0.1`, port `0`), if necessary.
+5. Starts the daemon and tray, then waits up to 30 seconds for a renderer to confirm the saved theme.
+
+Use `-OpenDashboard` to open the Dashboard only after the renderer confirms the saved theme:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-theme.ps1 -OpenDashboard
+```
+
+If the command says that Antigravity is already running without a usable debug port, save your work, choose **Quit/Exit** from the Antigravity System Tray, and run it again. The recovery script never forcibly terminates a working app. It also does not modify `theme_config.json`, preset catalogs, uploaded media, application files, or shortcuts.
+
+The normal custom launcher (`launch-antigravity.vbs`) now requests the same renderer confirmation before opening the Dashboard. `scripts/start-all.ps1` supports the explicit readiness mode as well:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-all.ps1 -OpenDashboard -WaitForTheme
+```
+
+The daemon remains alive while the debug port file is missing, locked, unreadable, or malformed. It retries a renderer that is still loading, avoids overlapping slow evaluations, and reconnects when an update changes the debugging port. A status response is renderer-ready only when `sessionsCount` is greater than zero and `appliedTheme` contains the saved theme name.
+
+An updater error can belong to a separate binary/model patcher. This theme project does not create, migrate, or reapply that tool's backups. Keep those backups outside the Antigravity program directory and follow that tool's own recovery instructions.
+
 ## 1. Overview & System Philosophy
 
 **AntigravityTheme** is an ultra-lightweight, zero-npm-dependency custom theme and visual enhancement suite designed specifically for the Antigravity IDE on Windows.
@@ -102,6 +138,16 @@ Displays output and errors directly in your terminal.
   ```powershell
   powershell -ExecutionPolicy Bypass -File scripts/tray.ps1
   ```
+
+### 3.3 Confirmed Renderer Startup
+
+`-OpenDashboard` only waits for the daemon by default. Add `-WaitForTheme` when a browser window must not open until a renderer has confirmed the saved theme:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-all.ps1 -OpenDashboard -WaitForTheme
+```
+
+The confirmed mode keeps the existing daemon PID and port checks, requires at least one applied renderer session, compares `appliedTheme` with `theme_config.json` when a theme name is saved, and times out after 30 seconds. Use it when Antigravity is already running with local debugging; otherwise use `scripts/restore-theme.ps1`. Calls without `-WaitForTheme` keep their existing behavior: daemon/tray-only startup returns after launch, while `-OpenDashboard` alone retains its 10-second daemon readiness limit.
 
 ---
 
@@ -297,6 +343,9 @@ Returns runtime status and diagnostic information.
     "pid": 14220,
     "port": 47990,
     "sessionsCount": 1,
+    "appliedTheme": "WLOP Cosmic",
+    "imagePreview": true,
+    "imageStudio": true,
     "version": "1.0.0"
   }
   ```
@@ -351,6 +400,13 @@ To run the REST API automated test suite:
 pytest tests/test_web_api.py -v
 ```
 
+For the update/recovery boundaries, run:
+```powershell
+node --test tests/test_daemon_reconnect.js
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_start_all.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_restore_theme.ps1
+```
+
 ### 7.2 Interactive End-to-End Verification Checklist
 | Step | Action | Expected Result |
 | :--- | :--- | :--- |
@@ -362,6 +418,7 @@ pytest tests/test_web_api.py -v
 | 6 | Click a different preset | Checkmark updates, notification balloon pops up, and editor theme changes instantly. |
 | 7 | Click "Restart Daemon" | Notification balloon shows "Theme Daemon restarted.", old PID is replaced by new PID in `daemon.pid`. |
 | 8 | Click "Exit" | Tray icon disappears immediately, daemon process terminates, and `daemon.pid` + `daemon.webport` are removed. |
+| 9 | Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-theme.ps1 -OpenDashboard` after an update | Antigravity starts with loopback debugging when closed, the saved theme is confirmed by a renderer, and the Dashboard opens only afterward. |
 
 ### 7.3 Lifecycle & Zombie Process Check
 Verify there are no lingering zombie processes after exiting:
@@ -388,6 +445,10 @@ If clean, this command returns zero results.
 4. **Port 47990 Already Bound**:
    - The daemon automatically detects port collisions and binds to `47991` through `47999`.
    - The tray icon automatically reads the allocated port from `daemon.webport`, ensuring smooth operation without manual configuration.
+5. **Theme is not confirmed after an update**:
+   - Check `daemon.log` and confirm Antigravity is fully quit before running `scripts/restore-theme.ps1` again.
+   - If a running main app has no usable debug port, quit it from Antigravity's own **Quit/Exit** action; do not use Task Manager to force-close it as part of recovery.
+   - A missing or malformed `DevToolsActivePort` does not mean the daemon crashed. Start Antigravity with loopback debugging and wait for the renderer to publish a valid port.
 
 ---
 
@@ -397,10 +458,10 @@ Hệ thống hỗ trợ tự động mở toàn bộ (Theme Daemon, Web Server v
 
 ### 8.1 Cơ chế hoạt động
 1. **Khởi chạy cùng Antigravity**:
-   - Script wrapper `launch-antigravity.vbs` đảm nhiệm kiểm tra và khởi chạy `silent-start-all.vbs` (chạy ngầm Theme Daemon & System Tray nếu chưa mở), đồng thời mở `Antigravity.exe` với tham số `--remote-debugging-port=0`.
+   - Script wrapper `launch-antigravity.vbs` mở `Antigravity.exe` với tham số `--remote-debugging-port=0`, khởi chạy Theme Daemon & System Tray, rồi chỉ mở Dashboard sau khi renderer xác nhận theme đã áp dụng.
    - Các shortcut của Antigravity trên **Desktop** và **Start Menu** đã được liên kết với `launch-antigravity.vbs` trong khi giữ nguyên biểu tượng icon gốc của Antigravity.
 2. **Khởi chạy cùng Windows (Startup)**:
-   - Shortcut `AntigravityCustomTheme.lnk` trong thư mục `shell:startup` tự động gọi `silent-start-all.vbs` khi máy tính bật lên, đảm bảo khay hệ thống luôn sẵn sàng.
+   - Shortcut `AntigravityCustomTheme.lnk` trong thư mục `shell:startup` tự động gọi `silent-start-all.vbs` khi máy tính bật lên, đảm bảo khay hệ thống luôn sẵn sàng. Startup daemon không tự đóng hoặc tự khởi động lại một phiên Antigravity đang làm việc.
 3. **Cấu hình hoặc Khôi phục**:
    - Áp dụng cấu hình tự động mở:
      ```powershell

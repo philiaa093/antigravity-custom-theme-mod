@@ -38,6 +38,6 @@ End If
 
 ' Start the daemon and tray, then open the dashboard once it responds.
 startAllScript = scriptDir & "\scripts\start-all.ps1"
-If WshShell.Run("powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & startAllScript & """ -OpenDashboard", 0, True) <> 0 Then
-    MsgBox "Could not open the Theme Dashboard. Check " & scriptDir & "\daemon.log", 16, "Antigravity Launcher Error"
+If WshShell.Run("powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & startAllScript & """ -OpenDashboard -WaitForTheme", 0, True) <> 0 Then
+    MsgBox "Antigravity did not confirm the saved theme. Quit Antigravity completely, then open this shortcut again or run scripts\restore-theme.ps1. Check " & scriptDir & "\daemon.log", 16, "Antigravity Launcher Error"
 End If

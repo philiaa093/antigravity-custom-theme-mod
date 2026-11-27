@@ -57,12 +57,14 @@ jobs:
       - name: Python reference and compiler tests
         run: python -m pytest tests -q
       - name: Node integration tests
-        run: node --test tests/test_image_design.js tests/test_studio_media.js
+        run: node --test tests/test_image_design.js tests/test_studio_media.js tests/test_daemon_reconnect.js
       - name: Windows launcher and tray tests
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_start_all.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_restore_theme.ps1
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File tests/test_tray_headless.ps1
           exit $LASTEXITCODE

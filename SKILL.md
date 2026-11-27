@@ -14,7 +14,7 @@ Creates and applies custom glassmorphic themes (wallpapers, cohesive palettes, c
 - `engine/core.js` — Standalone DOM + CSS injection engine (Zero Live Blur, L-glass layout, split-browser hole cutout, composer pill contrast, live theme settings modal).
 - `scripts/build_payload.py` — Compiles `themes/themes.json` + `engine/core.js` into gitignored `dist/theme_payload.js` (auto-downscales >2560px rasters to WebP when Pillow is installed).
 - `daemon/theme_daemon.js` — Cross-platform Node.js (>= 22) CDP daemon watching `DevToolsActivePort` and `dist/theme_payload.js`.
-- `scripts/install-win.ps1`, `scripts/install-unix.sh`, `scripts/uninstall.js`, `scripts/verify_cdp.js` — OS setup, removal, and live CDP verification.
+- `scripts/install-win.ps1`, `scripts/install-unix.sh`, `scripts/uninstall.js`, `scripts/restore-theme.ps1`, `scripts/verify_cdp.js` — OS setup, update recovery, removal, and live CDP verification.
 - `references/theme-schema.md` — Exact `themes.json` schema, contrast rules, and Antigravity selector notes.
 
 ## Workflow
@@ -55,8 +55,11 @@ Creates and applies custom glassmorphic themes (wallpapers, cohesive palettes, c
 Antigravity v2.33.0+ no longer opens `DevToolsActivePort` by default when launched without `--remote-debugging-port=0`, and its auto-updater relaunches `Antigravity.exe --updated` directly (which can also reset shortcuts).
 
 - **Windows:**
-  1. Re-run `powershell -ExecutionPolicy Bypass -File scripts/install-win.ps1` — it patches `--remote-debugging-port=0` onto `Antigravity.lnk` shortcuts (Desktop, Start Menu, Startup, Taskbar).
-  2. **Quit Antigravity completely** (System Tray -> Quit, not just closing the window) and reopen from **Start Menu**.
-  3. If you launch from a **Taskbar pin**, unpin the old icon and re-pin it from the Start Menu `Antigravity` shortcut (direct `.exe` pins drop shortcut arguments).
+  1. Run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-theme.ps1`.
+  2. The recovery command starts a closed Antigravity with `--remote-debugging-address=127.0.0.1 --remote-debugging-port=0`, starts the daemon and tray, and waits for the saved theme to be confirmed by a renderer. Add `-OpenDashboard` when the Dashboard should open after confirmation.
+  3. If it reports that an existing instance has no usable debug port, **Quit Antigravity completely** using its System Tray **Quit/Exit** action and run the command again. The recovery command never forcibly closes a working app, runs the installer, changes shortcuts, or modifies application files.
+  4. If a custom Desktop or Taskbar launcher was replaced by the update, inspect the change and then run `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-autostart.ps1` to restore the launcher integration. Do not use this step when only the saved theme needs recovery.
 - **macOS / Linux:**
   - Launch Antigravity with `--remote-debugging-port=0` (e.g., `open -a Antigravity --args --remote-debugging-port=0` on macOS, or add `--remote-debugging-port=0` to the `Exec=` line in your `.desktop` launcher on Linux).
+
+The daemon treats a missing, unreadable, or malformed `DevToolsActivePort` as disconnected instead of exiting. It retries a renderer that is still loading, coalesces slow CDP evaluations, and reconnects when an update publishes a new debugging port. A separate binary/model patcher is outside this skill: keep that tool's backups outside the Antigravity program directory and use its own supported recovery procedure.

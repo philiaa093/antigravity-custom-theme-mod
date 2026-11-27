@@ -104,12 +104,29 @@ Stops the daemon, removes its auto-start registration, and attempts to clear the
 
 Starting with **Antigravity v2.33.0+**, Antigravity no longer creates `DevToolsActivePort` by default unless launched with `--remote-debugging-port=0`, and the built-in auto-updater restarts `Antigravity.exe --updated` without shortcut flags.
 
-- **Windows:**
-  1. Re-run `powershell -ExecutionPolicy Bypass -File scripts/install-win.ps1` (it automatically patches `--remote-debugging-port=0` onto your `Antigravity.lnk` shortcuts in Start Menu, Desktop, Startup, and Taskbar).
-  2. **Quit Antigravity completely** (right-click the System Tray icon -> **Quit**) and reopen it from the **Start Menu**.
-  3. If you use a **Taskbar pin**, **Unpin** the old icon and re-pin it from the Start Menu `Antigravity` shortcut so the `--remote-debugging-port=0` flag is preserved.
+- **Windows:** run the recovery command from this project:
+
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restore-theme.ps1
+  ```
+
+  It starts a closed Antigravity with loopback debugging, starts the theme daemon and tray, and waits for a renderer to confirm your saved theme. Add `-OpenDashboard` to open the Dashboard after that confirmation. It preserves presets, uploaded media, and `theme_config.json`; it does not run an installer, change shortcuts, or patch Antigravity files.
+
+  To start the existing app integration manually and require the same renderer confirmation, run:
+
+  ```powershell
+  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-all.ps1 -OpenDashboard -WaitForTheme
+  ```
+
+  Use this only when Antigravity is already running with a local debug port. If it is closed or running without usable debugging, use `scripts/restore-theme.ps1` instead.
+
+  If the command reports that Antigravity is already running without a debug port, save your work and **Quit Antigravity completely** (System Tray -> **Quit/Exit**), then run it again. A second launch cannot add startup flags to an existing Electron instance. Recovery never forcibly closes your working app and refuses to launch it while its updater installer is running.
+
+  The custom Desktop/Taskbar launcher now waits for the saved theme to be applied before opening the Dashboard. The daemon retries when a new renderer is still loading and reconnects when the debugging port changes. If an update replaces your custom shortcuts, `scripts/setup-autostart.ps1` can restore the launcher integration; review that shortcut change before running it.
 - **macOS / Linux:**
   - Start Antigravity with `--remote-debugging-port=0` (`open -a Antigravity --args --remote-debugging-port=0` on macOS, or append `--remote-debugging-port=0` to the `Exec=` command in your `.desktop` entry on Linux).
+
+An updater message saying Antigravity cannot be closed can also come from a separate binary/model patcher. In particular, a deeply nested `resources/.antigravity-model-patch` backup can exceed the old uninstaller's Windows path limit. Keep that tool's backups outside the program directory using its own supported configuration or recovery procedure. This theme project does not create or migrate that directory, and theme recovery does not reapply model patches.
 
 ## Use as an Antigravity Skill (`SKILL.md`)
 
@@ -123,6 +140,7 @@ Once installed, simply prompt your Antigravity agent with an image and aesthetic
 ## Development
 
 - [Architecture](ARCHITECTURE.md): compiler, renderer, daemon, Dashboard, and platform launchers.
+- [Dashboard and tray operations](docs/DASHBOARD_AND_TRAY_GUIDE.md): current launch, recovery, status, and troubleshooting procedures.
 - [Contributing](CONTRIBUTING.md): pinned environment, test commands, and PR process.
 - [Release readiness](docs/REPOSITORY_AUDIT.md): publication checks and Git commands.
 - [Changelog](CHANGELOG.md) and [security/privacy guidance](SECURITY.md).

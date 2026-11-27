@@ -13,7 +13,7 @@ python scripts/check_repo.py
 python scripts/build_payload.py --themes themes/themes.json
 node --check dist/theme_payload.js
 python -m pytest tests -q
-node --test tests/test_image_design.js tests/test_studio_media.js
+node --test tests/test_image_design.js tests/test_studio_media.js tests/test_daemon_reconnect.js
 ```
 
 The Python suite tests the compiler, engine contracts, and an embedded reference server in a temporary checkout; it does not exercise the live daemon. The Node suites use the production HTTP server and a daemon smoke test in temporary directories. No live Antigravity window, API key, or model provider is required. Do not use a shared working session to run mutation tests against the real Dashboard.
@@ -22,10 +22,11 @@ The explicit build above writes `dist/theme_payload.js`. If the daemon is using 
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_start_all.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_restore_theme.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File tests/test_tray_headless.ps1
 ```
 
-The Windows scripts check launcher readiness and WinForms/tray contracts without installing shortcuts. On Unix run `bash -n scripts/install-unix.sh`. Test installer changes on the target OS and renderer changes with an open Antigravity window (`node scripts/verify_cdp.js`). Record what was not tested.
+The Windows scripts check daemon/renderer readiness, recovery process selection, and WinForms/tray contracts without opening a real app or installing shortcuts. The daemon reconnect suite uses an isolated local CDP transport to test an early empty DOM, slow evaluations, port-file failures, and an updater restart. On Unix run `bash -n scripts/install-unix.sh`. Test installer changes on the target OS and renderer changes with an open Antigravity window (`node scripts/verify_cdp.js`). Record what was not tested.
 
 ## Changes and PRs
 

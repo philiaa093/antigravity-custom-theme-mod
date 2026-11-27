@@ -188,17 +188,16 @@ function buildInjectedSource(page) {
 }
 
 function getPortInfo() {
-    const portFile = resolvePortFile();
-    if (!fs.existsSync(portFile)) return null;
-    const lines = fs
-        .readFileSync(portFile, 'utf8')
-        .trim()
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    const port = parseInt(lines[0], 10);
-    if (!Number.isFinite(port) || port <= 0) return null;
-    return { port, token: lines[1] || '' };
+    try {
+        const lines = fs.readFileSync(resolvePortFile(), 'utf8').split(/\r?\n/).map(s => s.trim());
+        if (!/^\d{1,5}$/.test(lines[0])) return null;
+        const port = Number(lines[0]);
+        if (port < 1 || port > 65535) return null;
+        return { port, token: lines[1] || '' };
+    } catch (_) {
+        // Antigravity can replace or temporarily lock this file while restarting.
+        return null;
+    }
 }
 
 function fetchJson(url) {
@@ -222,8 +221,26 @@ function fetchJson(url) {
 }
 
 const sessions = new Map();
-let lastPort = null;
+let connectionKey = null;
+let connectionGeneration = 0;
+let scanPending = false;
 let reloadTimer = null;
+
+function clearSessions() {
+    for (const session of sessions.values()) {
+        try { session.ws.close(); } catch (_) {}
+    }
+    sessions.clear();
+}
+
+function updateConnection(info) {
+    const key = info ? `${info.port}\n${info.token}` : null;
+    if (!info || key !== connectionKey) {
+        connectionGeneration++;
+        clearSessions();
+        connectionKey = key;
+    }
+}
 
 function createSession(target) {
     const ws = new globalThis.WebSocket(target.webSocketDebuggerUrl);
@@ -232,7 +249,7 @@ function createSession(target) {
     const session = { id: target.id, ws, target };
     sessions.set(target.id, session);
 
-    function send(method, params = {}) {
+    function send(method, params = {}, waitForCompletion = false) {
         return new Promise((resolve, reject) => {
             if (ws.readyState !== 1) {
                 reject(new Error('WebSocket is not open'));
@@ -240,6 +257,11 @@ function createSession(target) {
             }
             const id = nextId++;
             const timer = setTimeout(() => {
+                if (waitForCompletion) {
+                    // A local timeout cannot cancel JavaScript already queued in the renderer.
+                    log(`CDP still waiting for ${method} on ${session.id}; keeping its injection in flight.`);
+                    return;
+                }
                 pending.delete(id);
                 reject(new Error(`CDP timeout: ${method}`));
             }, 8000);
@@ -249,8 +271,8 @@ function createSession(target) {
     }
 
     session.send = send;
-    async function evaluate(expression) {
-        const result = await send('Runtime.evaluate', { expression, returnByValue: true });
+    async function evaluate(expression, waitForCompletion = false) {
+        const result = await send('Runtime.evaluate', { expression, returnByValue: true }, waitForCompletion);
         if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description?.split('\n')[0] || result.exceptionDetails.text);
         return result.result?.value;
     }
@@ -262,15 +284,25 @@ function createSession(target) {
         session.appliedTheme = applied;
     };
 
-    session.reinject = async () => {
-        try {
-            const src = buildInjectedSource(session.target);
-            session.appliedTheme = src ? await evaluate(src) : '';
-        } catch (err) {
-            session.appliedTheme = '';
-            log(`Reinject error for ${session.id}: ${err.message}`);
-        }
-        return session.appliedTheme;
+    let reinjection = null;
+    let reinjectRequested = false;
+    session.reinject = (invalidate = true) => {
+        if (invalidate) reinjectRequested = true;
+        if (reinjection) return reinjection;
+        reinjection = (async () => {
+            do {
+                reinjectRequested = false;
+                session.appliedTheme = '';
+                try {
+                    const src = buildInjectedSource(session.target);
+                    session.appliedTheme = src ? await evaluate(src, true) : '';
+                } catch (err) {
+                    log(`Reinject error for ${session.id}: ${err.message}`);
+                }
+            } while (reinjectRequested && ws.readyState === 1 && sessions.get(target.id) === session);
+            return session.appliedTheme;
+        })().finally(() => { reinjection = null; });
+        return reinjection;
     };
 
     ws.addEventListener('message', async (event) => {
@@ -341,45 +373,42 @@ function createSession(target) {
 
 async function scanPages() {
     const info = getPortInfo();
-    if (!info) return;
-
-    if (lastPort !== null && lastPort !== info.port) {
-        for (const s of sessions.values()) {
-            try {
-                s.ws.close();
-            } catch (_) {}
-        }
-        sessions.clear();
-    }
-    lastPort = info.port;
-
-    let targets;
+    updateConnection(info);
+    if (!info || scanPending) return;
+    const generation = connectionGeneration;
+    scanPending = true;
     try {
-        targets = await fetchJson(`http://127.0.0.1:${info.port}/json`);
-    } catch (_) {
-        return;
-    }
-    if (!Array.isArray(targets)) return;
+        const targets = await fetchJson(`http://127.0.0.1:${info.port}/json`);
+        if (generation !== connectionGeneration) return;
+        // The file may have changed before the next polling tick observed the restart.
+        updateConnection(getPortInfo());
+        if (generation !== connectionGeneration || !Array.isArray(targets)) return;
 
-    const pages = targets.filter(t => t?.type === 'page' && t.webSocketDebuggerUrl && isThemePage(t.url));
-
-    const liveIds = new Set(pages.map((p) => p.id));
-    for (const [id, session] of sessions.entries()) {
-        if (!liveIds.has(id)) {
-            try {
-                session.ws.close();
-            } catch (_) {}
-            sessions.delete(id);
+        const pages = targets.filter(t => t?.type === 'page' && t.webSocketDebuggerUrl && isThemePage(t.url));
+        const liveIds = new Set(pages.map(p => p.id));
+        for (const [id, session] of sessions.entries()) {
+            if (!liveIds.has(id)) {
+                try { session.ws.close(); } catch (_) {}
+                sessions.delete(id);
+            }
         }
-    }
 
-    for (const page of pages) {
-        const session = sessions.get(page.id);
-        if (!session) { createSession(page); continue; }
-        const previous = new URL(session.target.url);
-        const current = new URL(page.url);
-        session.target = page;
-        if (previous.protocol !== current.protocol || previous.host !== current.host) session.reinject();
+        for (const page of pages) {
+            const session = sessions.get(page.id);
+            if (!session) { createSession(page); continue; }
+            const previous = new URL(session.target.url);
+            const current = new URL(page.url);
+            session.target = page;
+            const changedOrigin = previous.protocol !== current.protocol || previous.host !== current.host;
+            if (session.ws.readyState === 1 && (changedOrigin || !session.appliedTheme)) {
+                // Polls share pending work; navigation and explicit reloads invalidate it.
+                void session.reinject(changedOrigin);
+            }
+        }
+    } catch (_) {
+        if (generation === connectionGeneration) clearSessions();
+    } finally {
+        scanPending = false;
     }
 }
 
